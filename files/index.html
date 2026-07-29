@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>강두의 철봉</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="철봉">
+<meta name="theme-color" content="#0D1420">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icons/icon-180.png">
+<style>
+:root{
+  --bg:#0D1420; --panel:#131C2C; --panelHi:#182338; --line:#243349;
+  --chalk:#E8EEF7; --muted:#7D8DA6; --done:#4CD6C1; --accent:#F2B441; --danger:#E8735A;
+  --ui:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif;
+  --num:ui-monospace,'SF Mono',Menlo,monospace;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg);
+  background-image:linear-gradient(#18233855 1px,transparent 1px),linear-gradient(90deg,#18233855 1px,transparent 1px);
+  background-size:28px 28px;
+  color:var(--chalk); font-family:var(--ui); min-height:100vh;
+  padding:calc(env(safe-area-inset-top) + 20px) 16px calc(env(safe-area-inset-bottom) + 48px);
+  -webkit-user-select:none; user-select:none;
+}
+.wrap{max-width:460px;margin:0 auto}
+.row{display:flex;justify-content:space-between;align-items:baseline}
+h1{font-size:20px;font-weight:700;letter-spacing:-.01em;margin:0}
+.sub{font-size:13px;color:var(--muted);margin:4px 0 18px}
+.num{font-family:var(--num)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:12px}
+.label{font-family:var(--num);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.tabs{display:flex;gap:6px;margin-bottom:16px}
+.tab{flex:1;padding:9px 0;background:none;border:1px solid transparent;border-radius:10px;color:var(--muted);font-family:var(--ui);font-size:14px;cursor:pointer}
+.tab.on{background:var(--panelHi);border-color:var(--line);color:var(--chalk)}
+.set{width:52px;height:46px;border-radius:10px;border:1px solid var(--line);background:none;color:var(--muted);font-family:var(--num);font-size:15px;cursor:pointer;transition:all .2s}
+.set.on{border-color:var(--done);background:#4CD6C122;color:var(--done)}
+.cond{flex:1;padding:11px 0;border-radius:10px;border:1px solid var(--line);background:none;color:var(--muted);font-family:var(--ui);font-size:14px;cursor:pointer}
+.cond.on{border-color:var(--accent);background:#F2B4411A;color:var(--accent)}
+input[type=number]{flex:1;background:var(--bg);border:1px solid var(--line);border-radius:10px;color:var(--chalk);padding:11px 12px;font-family:var(--num);font-size:16px;-webkit-user-select:text;user-select:text}
+.btn{padding:0 20px;border-radius:10px;border:none;background:var(--accent);color:var(--bg);font-weight:700;font-size:14px;font-family:var(--ui);cursor:pointer}
+.btn.ghost{background:none;border:1px solid var(--line);color:var(--chalk);font-weight:400}
+.btn.wide{width:100%;padding:12px 0;background:none;border:1px solid #E8735A55;color:var(--danger);font-size:13px;font-weight:400}
+.grid{display:grid;grid-template-columns:repeat(14,1fr);gap:5px}
+.cell{padding-top:100%;border-radius:4px;background:var(--panelHi)}
+.line{display:flex;justify-content:space-between;font-size:13px;padding:8px 0;border-top:1px solid var(--line)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+
+<script>
+const KEY = 'pullup:v1';
+const DOW = ['일','월','화','수','목','금','토'];
+const pad = n => String(n).padStart(2,'0');
+const ymd = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const parseYmd = s => { const [y,m,d] = s.split('-').map(Number); return new Date(y,m-1,d); };
+const addDays = (d,n) => { const x = new Date(d); x.setDate(x.getDate()+n); return x; };
+const daysBetween = (a,b) => Math.floor((parseYmd(b)-parseYmd(a))/86400000);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+let S, tab = 'today', testInput = '';
+
+function load(){
+  try { S = JSON.parse(localStorage.getItem(KEY)); } catch(e){ S = null; }
+  if(!S || !S.startDate) S = { startDate: ymd(new Date()), maxTests: [], days: {} };
+  if(!S.days) S.days = {};
+  if(!S.maxTests) S.maxTests = [];
+}
+function save(){ try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){} }
+
+function phaseOf(w){
+  if(w <= 4) return {n:1, name:'패턴 만들기', note:'밴드로 전체 동작을 몸에 새기는 구간'};
+  if(w <= 8) return {n:2, name:'보조 줄이기', note:'밴드를 얇게, 하강을 길게'};
+  return {n:3, name:'무보조 분산', note:'가벼운 무보조 세트를 하루에 흩뿌리는 구간'};
+}
+
+function buildPlan(week, dow, maxReps){
+  if(dow === 0) return {rest:true, test:false, items:[], headline:'완전 휴식', sub:'봉에 매달리지 않기. 회복도 계획의 일부입니다.'};
+
+  if((week === 4 || week === 8 || week === 12) && dow === 6)
+    return {rest:false, test:true, headline:'최대 반복 테스트', sub:'충분히 쉬고 딱 한 세트만. 결과를 아래에 남기세요.', items:[
+      {id:'warm', name:'가볍게 풀기', sets:1, reps:'스캡 풀 5회 + 데드행 20초', cue:'어깨만 깨우는 정도'},
+      {id:'test', name:'무보조 턱걸이 최대 반복', sets:1, reps:'가능한 만큼', cue:'반동 없이. 폼이 무너지면 거기서 끝'}
+    ]};
+
+  const negDay = week <= 8 ? (dow === 2 || dow === 5) : (dow === 5);
+  const items = [];
+
+  if(week <= 4){
+    items.push({id:'scap', name:'스캡 풀 + 데드행', sets:2, reps:'5회 + 15초 매달리기', cue:'팔은 편 채로 견갑만 아래로'});
+    items.push({id:'main', name:'밴드 보조 턱걸이', sets: week <= 2 ? 4 : 5, reps:'5회', cue:'3회는 더 할 수 있을 때 멈추기'});
+    if(negDay) items.push({id:'neg', name:'네거티브 턱걸이', sets:3, reps:'3회 · 4초 하강', cue:'의자로 올라가 넷 세며 내려오기'});
+  } else if(week <= 8){
+    items.push({id:'scap', name:'스캡 풀 + 데드행', sets:2, reps:'5회 + 20초 매달리기', cue:'어깨가 귀에서 멀어지는 느낌 유지'});
+    items.push({id:'main', name: week >= 7 ? '턱걸이 (무보조 먼저)' : '밴드 보조 턱걸이 (얇은 밴드)', sets:5,
+      reps: week >= 7 ? '무보조 1~2회 + 밴드로 3회' : '4회', cue:'세 세트를 여유 있게 마칠 수 있는 두께로'});
+    if(negDay) items.push({id:'neg', name:'네거티브 턱걸이', sets:3, reps:'4회 · 5초 하강', cue:'다섯을 다 세지 못하면 반복을 줄이기'});
+  } else {
+    const gtg = Math.max(1, Math.round((maxReps || 3) * 0.5));
+    items.push({id:'scap', name:'스캡 풀 + 데드행', sets:1, reps:'5회 + 20초 매달리기', cue:'첫 세트 전 워밍업'});
+    items.push({id:'main', name:'무보조 턱걸이 (분산)', sets:6, reps:gtg + '회', cue:'세트 사이 30분 이상. 힘이 남은 채로 끝내기'});
+    if(negDay) items.push({id:'neg', name:'네거티브 턱걸이', sets:3, reps:'5회 · 5초 하강', cue:'이번 주 유일한 고강도 세션'});
+  }
+  const ph = phaseOf(week);
+  return {rest:false, test:false, items, headline:ph.name, sub:ph.note};
+}
+
+function scaled(plan, cond){
+  if(cond !== 'bad' || plan.rest || plan.test) return plan;
+  return Object.assign({}, plan, {items: plan.items.map(it => Object.assign({}, it, {sets: Math.max(1, Math.round(it.sets * 0.7))}))});
+}
+
+const weekOf = key => Math.min(12, Math.floor(daysBetween(S.startDate, key) / 7) + 1);
+const idsOf = plan => plan.items.flatMap(it => Array.from({length: it.sets}, (_, i) => it.id + '-' + i));
+const lastMax = () => S.maxTests.length ? S.maxTests[S.maxTests.length - 1].reps : 2;
+
+function streak(){
+  let s = 0;
+  for(let i = 0; i < 400; i++){
+    const d = addDays(new Date(), -i), key = ymd(d);
+    if(daysBetween(S.startDate, key) < 0) break;
+    if(d.getDay() === 0){ s++; continue; }
+    const p = buildPlan(weekOf(key), d.getDay(), lastMax());
+    const ids = idsOf(p), rec = S.days[key];
+    const c = rec ? ids.filter(id => rec.done.includes(id)).length : 0;
+    if(ids.length && c / ids.length >= 0.8) s++;
+    else if(i === 0) continue;
+    else break;
+  }
+  return s;
+}
+
+function gauge(total, done){
+  const n = Math.max(total, 1), W = 320, padX = 14, gap = n > 1 ? (W - padX * 2) / (n - 1) : 0;
+  let bars = '';
+  for(let i = 0; i < n; i++){
+    const x = n > 1 ? padX + gap * i : W / 2, on = i < done;
+    bars += `<rect x="${x-2}" y="32" width="4" height="${on?16:34}" rx="2" fill="${on?'#4CD6C1':'#243349'}" style="transition:height .35s ease,fill .35s ease"/>`;
+  }
+  return `<svg viewBox="0 0 ${W} 74" style="width:100%;height:74px" aria-hidden="true">
+    <line x1="6" y1="26" x2="${W-6}" y2="26" stroke="#243349" stroke-width="6" stroke-linecap="round"/>
+    <line x1="6" y1="26" x2="${6+(W-12)*done/n}" y2="26" stroke="#4CD6C1" stroke-width="6" stroke-linecap="round"/>${bars}</svg>`;
+}
+
+function render(){
+  const today = ymd(new Date()), dow = new Date().getDay(), week = weekOf(today);
+  const rec = S.days[today] || {done: [], condition: 'ok'};
+  const plan = scaled(buildPlan(week, dow, lastMax()), rec.condition);
+  const ids = idsOf(plan), done = ids.filter(id => rec.done.includes(id)).length;
+  const ph = phaseOf(week);
+  let h = '';
+
+  h += `<div class="row"><h1>강두의 철봉</h1><span class="num" style="font-size:12px;color:var(--muted)">${week}주차 · ${DOW[dow]}요일</span></div>`;
+  h += `<div class="sub">단계 ${ph.n} · ${ph.name} — 목표 연속 10회</div>`;
+  h += `<div class="tabs">${[['today','오늘'],['log','기록'],['plan','계획']].map(([k,t]) =>
+        `<button class="tab ${tab===k?'on':''}" onclick="go('${k}')">${t}</button>`).join('')}</div>`;
+
+  if(tab === 'today'){
+    h += `<div class="panel"><div class="label">오늘 · ${esc(plan.headline)}</div>
+          <div style="font-size:13px;color:var(--muted);margin-bottom:10px">${esc(plan.sub)}</div>`;
+    if(!plan.rest){
+      h += gauge(ids.length, done) + `<div class="row">
+        <span class="num" style="font-size:26px;color:${done===ids.length?'var(--done)':'var(--chalk)'}">${done}/${ids.length}</span>
+        <span class="num" style="font-size:12px;color:var(--muted)">세트 ${Math.round(done/Math.max(ids.length,1)*100)}% · 연속 ${streak()}일</span></div>`;
+    }
+    h += `</div>`;
+
+    if(!plan.rest){
+      h += `<div class="panel"><div class="label">오늘 몸 상태</div><div style="display:flex;gap:8px">${
+        [['good','좋음'],['ok','보통'],['bad','뻐근함']].map(([k,t]) =>
+        `<button class="cond ${rec.condition===k?'on':''}" onclick="setCond('${k}')">${t}</button>`).join('')}</div>`;
+      if(rec.condition === 'bad') h += `<div style="font-size:12px;color:var(--accent);margin-top:10px">세트를 30% 줄였습니다. 팔꿈치나 어깨가 아프면 오늘은 매달리기만 하세요.</div>`;
+      h += `</div>`;
+    }
+
+    if(plan.rest){
+      h += `<div class="panel" style="font-size:15px;line-height:1.7">근력은 쉬는 날 붙습니다. 오늘은 가볍게 걷고 어깨를 크게 돌려주는 정도로 끝내세요.</div>`;
+    } else {
+      plan.items.forEach(it => {
+        h += `<div class="panel"><div class="row" style="margin-bottom:4px">
+          <span style="font-size:16px;font-weight:600">${esc(it.name)}</span>
+          <span class="num" style="font-size:12px;color:var(--muted)">${it.sets}세트 × ${esc(it.reps)}</span></div>
+          <div style="font-size:12.5px;color:var(--muted);margin-bottom:12px;line-height:1.5">${esc(it.cue)}</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">`;
+        for(let i = 0; i < it.sets; i++){
+          const id = it.id + '-' + i, on = rec.done.includes(id);
+          h += `<button class="set ${on?'on':''}" aria-pressed="${on}" onclick="toggle('${id}')">${on?'✓':(i+1)}</button>`;
+        }
+        h += `</div></div>`;
+      });
+    }
+
+    if(plan.test){
+      h += `<div class="panel"><div class="label" style="color:var(--accent)">테스트 결과 남기기</div>
+        <div style="display:flex;gap:8px"><input type="number" inputmode="numeric" id="ti" value="${esc(testInput)}" placeholder="연속 횟수" oninput="testInput=this.value">
+        <button class="btn" onclick="saveTest()">저장</button></div></div>`;
+    }
+  }
+
+  if(tab === 'log'){
+    h += `<div class="panel"><div class="label">최근 28일</div><div class="grid">`;
+    for(let i = 0; i < 28; i++){
+      const d = addDays(new Date(), -(27 - i)), key = ymd(d), r = S.days[key];
+      const p = buildPlan(weekOf(key), d.getDay(), lastMax()), n = idsOf(p).length;
+      const ratio = r && n ? r.done.length / n : 0;
+      const bg = d.getDay() === 0 ? '#243349' : ratio >= 0.8 ? '#4CD6C1' : ratio > 0 ? '#4CD6C155' : '#182338';
+      h += `<div class="cell" title="${key}" style="background:${bg}"></div>`;
+    }
+    h += `</div><div style="font-size:12px;color:var(--muted);margin-top:10px">진한 칸은 세트를 80% 이상 마친 날, 회색은 휴식일입니다.</div></div>`;
+
+    h += `<div class="panel"><div class="label">최대 반복 기록</div>`;
+    if(!S.maxTests.length){
+      h += `<div style="font-size:13px;color:var(--muted)">아직 기록이 없습니다. 4주차 토요일에 첫 테스트를 합니다.</div>`;
+    } else {
+      S.maxTests.forEach((t, i) => {
+        h += `<div class="row" style="padding:8px 0;${i?'border-top:1px solid var(--line)':''}">
+          <span class="num" style="font-size:12px;color:var(--muted)">${t.date}</span>
+          <span class="num" style="font-size:20px;color:var(--done)">${t.reps}회</span></div>`;
+      });
+    }
+    h += `<div style="display:flex;gap:8px;margin-top:14px">
+      <input type="number" inputmode="numeric" value="${esc(testInput)}" placeholder="직접 입력" oninput="testInput=this.value">
+      <button class="btn ghost" onclick="saveTest()">추가</button></div></div>`;
+
+    h += `<div class="panel"><div class="label">시작일</div>
+      <div class="num" style="font-size:15px;margin-bottom:14px">${S.startDate}</div>
+      <button class="btn wide" onclick="resetAll()">처음부터 다시 시작</button></div>`;
+  }
+
+  if(tab === 'plan'){
+    const P = [
+      ['1–4주', 1, [['스캡 풀 + 데드행','매일 2세트 × 5회'],['밴드 보조 턱걸이','매일 4~5세트 × 5회'],['네거티브 턱걸이','화·금 3세트 × 3회 (4초)']]],
+      ['5–8주', 2, [['스캡 풀 + 데드행','매일 2세트 × 5회'],['턱걸이 (얇은 밴드)','매일 5세트 × 4회'],['네거티브 턱걸이','화·금 3세트 × 4회 (5초)']]],
+      ['9–12주', 3, [['스캡 풀 + 데드행','매일 1세트'],['무보조 턱걸이','매일 6세트 × 최대의 절반'],['네거티브 턱걸이','금 3세트 × 5회 (5초)']]]
+    ];
+    P.forEach(([range, n, rows]) => {
+      const on = ph.n === n;
+      h += `<div class="panel" style="${on?'border-color:var(--accent)':''}">
+        <div class="row" style="margin-bottom:12px">
+          <span style="font-size:15px;font-weight:600">단계 ${n} · ${phaseOf(n===1?1:n===2?5:9).name}</span>
+          <span class="num" style="font-size:12px;color:${on?'var(--accent)':'var(--muted)'}">${range}</span></div>`;
+      rows.forEach(([a,b]) => { h += `<div class="line"><span>${a}</span><span class="num" style="color:var(--muted);font-size:12px">${b}</span></div>`; });
+      h += `</div>`;
+    });
+    h += `<div class="panel"><div class="label">지켜야 할 세 가지</div>
+      <div style="font-size:13.5px;line-height:1.8">
+      1. 어떤 세트도 실패까지 가지 않습니다. 3회는 더 할 수 있을 때 내려옵니다.<br>
+      2. 같은 동작의 세트 사이는 최소 15분, 가능하면 하루에 흩뿌립니다.<br>
+      3. 일요일은 쉬고, 최대 반복 테스트는 4·8·12주 토요일에만 합니다.</div></div>`;
+  }
+
+  document.getElementById('app').innerHTML = h;
+}
+
+function go(t){ tab = t; render(); }
+function today(){ return ymd(new Date()); }
+function rec(){ return S.days[today()] || (S.days[today()] = {done: [], condition: 'ok'}); }
+function toggle(id){
+  const r = rec();
+  r.done = r.done.includes(id) ? r.done.filter(x => x !== id) : r.done.concat(id);
+  save(); render();
+}
+function setCond(c){ rec().condition = c; save(); render(); }
+function saveTest(){
+  const n = parseInt(testInput, 10);
+  if(!n || n < 0) return;
+  S.maxTests.push({date: today(), reps: n});
+  testInput = ''; save(); render();
+}
+function resetAll(){
+  if(!confirm('모든 기록을 지우고 오늘부터 1주차로 다시 시작합니다.')) return;
+  S = {startDate: today(), maxTests: [], days: {}};
+  save(); render();
+}
+
+load(); render();
+if('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
+</script>
+</body>
+</html>
